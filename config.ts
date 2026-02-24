@@ -1,0 +1,4 @@
+export const API_URL = 'http://10.97.189.50:5000/api';
+export const MISSED_DOSE_TIMEOUT_MINUTES = 10;
+export const SNOOZE_DURATION_MINUTES = 10;
+export const NOTIFICATION_POLL_INTERVAL_MS = 30000;
