@@ -10,10 +10,25 @@ const medicineSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    time: {
-        type: String, // HH:MM format
-        required: true
-    },
+    times: [{
+        time: {
+            type: String, // HH:MM format
+            required: true
+        },
+        status: {
+            type: String,
+            enum: ['pending', 'taken', 'missed', 'snoozed'],
+            default: 'pending'
+        },
+        dismissedAt: {
+            type: Date,
+            default: null
+        },
+        missedAt: {
+            type: Date,
+            default: null
+        }
+    }],
     patientId: {
         type: String,
         ref: 'User',
@@ -24,21 +39,16 @@ const medicineSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
-    status: {
-        type: String,
-        enum: ['pending', 'taken', 'missed', 'snoozed'],
-        default: 'pending'
-    },
     scheduledDate: {
         type: String, // YYYY-MM-DD
         required: true
     },
-    dismissedAt: {
-        type: Date,
-        default: null
+    totalQuantity: {
+        type: Number,
+        default: 0
     },
-    missedAt: {
-        type: Date,
+    imageUrl: {
+        type: String,
         default: null
     }
 }, {

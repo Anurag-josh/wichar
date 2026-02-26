@@ -1,23 +1,40 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
 
 interface Props {
     visible: boolean;
     onClose: () => void;
-    onSave: (name: string, time: Date) => void;
+    onSave: (name: string, time: Date, totalQuantity: number, imageUri?: string) => void;
 }
-
+//add
 export function AddMedicineModal({ visible, onClose, onSave }: Props) {
     const [name, setName] = useState('');
+    const [totalQuantity, setTotalQuantity] = useState('');
     const [time, setTime] = useState(new Date());
     const [showPicker, setShowPicker] = useState(Platform.OS === 'ios');
+    const [imageUri, setImageUri] = useState<string | null>(null);
 
     const handleSave = () => {
         if (name.trim() === '') return;
-        onSave(name.trim(), time);
+        const quantityNum = parseInt(totalQuantity) || 0;
+        onSave(name.trim(), time, quantityNum, imageUri || undefined);
         setName('');
+        setTotalQuantity('');
+        setImageUri(null);
         setTime(new Date());
+    };
+
+    const pickImage = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets.length > 0) {
+            setImageUri(result.assets[0].uri);
+        }
     };
 
     return (
@@ -34,6 +51,15 @@ export function AddMedicineModal({ visible, onClose, onSave }: Props) {
                         placeholder="Medicine Name"
                         value={name}
                         onChangeText={setName}
+                        placeholderTextColor="#999"
+                    />
+
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Total Quantity (e.g. 30)"
+                        value={totalQuantity}
+                        onChangeText={setTotalQuantity}
+                        keyboardType="numeric"
                         placeholderTextColor="#999"
                     />
 
@@ -58,6 +84,11 @@ export function AddMedicineModal({ visible, onClose, onSave }: Props) {
                             />
                         )}
                     </View>
+
+                    <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+                        <Text style={styles.imageButtonText}>{imageUri ? 'Change Medicine Image' : 'Upload Medicine Image (Optional)'}</Text>
+                    </TouchableOpacity>
+                    {imageUri && <Image source={{ uri: imageUri }} style={styles.previewImage} />}
 
                     <View style={styles.buttonRow}>
                         <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}>
@@ -151,5 +182,24 @@ const styles = StyleSheet.create({
         fontSize: 18,
         color: '#FFFFFF',
         fontWeight: 'bold',
+    },
+    imageButton: {
+        backgroundColor: '#E0E7FF',
+        padding: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    imageButtonText: {
+        fontSize: 16,
+        color: '#4F46E5',
+        fontWeight: '600',
+    },
+    previewImage: {
+        width: 100,
+        height: 100,
+        borderRadius: 8,
+        alignSelf: 'center',
+        marginBottom: 20,
     },
 });

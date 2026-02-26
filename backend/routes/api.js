@@ -3,6 +3,20 @@ const router = express.Router();
 const User = require('../models/User');
 const Medicine = require('../models/Medicine');
 const Notification = require('../models/Notification');
+const multer = require('multer');
+const path = require('path');
+
+// Configure multer
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/')
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, uniqueSuffix + path.extname(file.originalname))
+    }
+});
+const upload = multer({ storage: storage });
 
 // POST /create-user
 router.post('/create-user', async (req, res) => {
@@ -68,23 +82,52 @@ router.post('/link-user', async (req, res) => {
     }
 });
 
+// POST /upload-medicine-image
+router.post('/upload-medicine-image', upload.single('image'), async (req, res) => {
+    try {
+        const { medicineId } = req.body;
+        if (!medicineId) {
+            return res.status(400).json({ success: false, error: 'medicineId is required' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No image uploaded' });
+        }
+
+        const imageUrl = `/uploads/${req.file.filename}`;
+
+        const medicine = await Medicine.findByIdAndUpdate(
+            medicineId,
+            { imageUrl },
+            { new: true }
+        );
+
+        if (!medicine) {
+            return res.status(404).json({ success: false, error: 'Medicine not found' });
+        }
+
+        res.json({ success: true, medicine });
+    } catch (error) {
+        console.error('Error uploading image:', error);
+        res.status(500).json({ success: false, error: 'Internal Server Error' });
+    }
+});
+
 // POST /add-medicine
 router.post('/add-medicine', async (req, res) => {
     try {
-        const { name, time, patientId, createdBy } = req.body;
+        const { name, time, times, patientId, createdBy, totalQuantity } = req.body;
 
-        // We assume scheduledDate is today or derived on the frontend. The spec says add scheduledDate. Let's just use today's date in YYYY-MM-DD for testing, or require it from frontend.
-        // Spec asks for: {"name": "Paracetamol", "time": "08:00", "patientId": "u1", "createdBy": "u2"}
-        // Let's generate scheduledDate as today's date if not provided
         const scheduledDate = req.body.scheduledDate || new Date().toISOString().split('T')[0];
+
+        const timesArray = times ? times.map(t => ({ time: t, status: 'pending' })) : [{ time, status: 'pending' }];
 
         const medicine = new Medicine({
             name,
-            time,
+            times: timesArray,
             patientId,
             createdBy,
             scheduledDate,
-            status: 'pending'
+            ...(totalQuantity !== undefined && totalQuantity !== '' && { totalQuantity: Number(totalQuantity) })
         });
 
         await medicine.save();
@@ -111,6 +154,35 @@ router.get('/medicines', async (req, res) => {
     }
 });
 
+// PUT /medicines/:id
+router.put('/medicines/:id', async (req, res) => {
+    try {
+        const { name, times, totalQuantity, imageUrl } = req.body;
+        const medicine = await Medicine.findById(req.params.id);
+        if (!medicine) {
+            return res.status(404).json({ success: false, error: 'Medicine not found' });
+        }
+        if (name) medicine.name = name;
+        if (totalQuantity !== undefined && totalQuantity !== '') {
+            medicine.totalQuantity = Number(totalQuantity);
+        }
+        if (imageUrl !== undefined) {
+            medicine.imageUrl = imageUrl;
+        }
+        if (times) {
+            medicine.times = times.map(t => {
+                const existing = medicine.times.find(et => et.time === t);
+                return existing ? existing : { time: t, status: 'pending' };
+            });
+        }
+        await medicine.save();
+        res.json({ success: true, medicine });
+    } catch (error) {
+        console.error('Error updating medicine:', error);
+        res.status(500).json({ success: false, error: 'Internal Server Error' });
+    }
+});
+
 // DELETE /medicines/:id
 router.delete('/medicines/:id', async (req, res) => {
     try {
@@ -128,15 +200,23 @@ router.delete('/medicines/:id', async (req, res) => {
 // POST /mark-taken
 router.post('/mark-taken', async (req, res) => {
     try {
-        const { medicineId, patientId } = req.body;
+        const { medicineId, patientId, time } = req.body;
         // We assume client validates patientId
         const medicine = await Medicine.findById(medicineId);
         if (!medicine) {
             return res.status(404).json({ success: false, error: 'Medicine not found' });
         }
 
-        medicine.status = 'taken';
-        medicine.dismissedAt = new Date();
+        const timeEntry = medicine.times.find(t => t.time === time);
+        if (timeEntry) {
+            timeEntry.status = 'taken';
+            timeEntry.dismissedAt = new Date();
+
+            // Smart Inventory: decrement quantity when taken
+            if (medicine.totalQuantity !== undefined) {
+                medicine.totalQuantity = Math.max(0, medicine.totalQuantity - 1);
+            }
+        }
         await medicine.save();
 
         res.json({ success: true, message: 'Medicine marked as taken' });
@@ -149,15 +229,18 @@ router.post('/mark-taken', async (req, res) => {
 // POST /mark-missed
 router.post('/mark-missed', async (req, res) => {
     try {
-        const { medicineId, patientId } = req.body;
+        const { medicineId, patientId, time } = req.body;
 
         const medicine = await Medicine.findById(medicineId);
         if (!medicine) {
             return res.status(404).json({ success: false, error: 'Medicine not found' });
         }
 
-        medicine.status = 'missed';
-        medicine.missedAt = new Date();
+        const timeEntry = medicine.times.find(t => t.time === time);
+        if (timeEntry) {
+            timeEntry.status = 'missed';
+            timeEntry.missedAt = new Date();
+        }
         await medicine.save();
 
         // Find patient to get linked caregivers
@@ -178,7 +261,7 @@ router.post('/mark-missed', async (req, res) => {
                 userId: caregiver._id,
                 medicineId: medicine._id,
                 patientId: patient._id,
-                message: `${patient.name} missed the ${medicine.time} dose of ${medicine.name}`
+                message: `${patient.name} missed the ${time || 'scheduled'} dose of ${medicine.name}`
             });
             await notification.save();
         }

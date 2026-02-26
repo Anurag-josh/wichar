@@ -19,6 +19,11 @@ const MAPPING = {
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'gearshape.fill': 'settings',
+  'plus.circle.fill': 'add-circle',
+  'trash.fill': 'delete',
+  'pencil.circle.fill': 'edit',
+  'plus': 'add',
+  'plus.app.fill': 'camera-alt',
 } as IconMapping;
 
 /**

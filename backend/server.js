@@ -3,9 +3,17 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 
 const app = express();
+const path = require('path');
+const fs = require('fs');
+
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir);
+}
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 const apiRoutes = require('./routes/api');
